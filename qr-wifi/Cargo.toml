@@ -1,0 +1,13 @@
+[package]
+name = "qr-wifi"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+qrcode = "0.12.0"
+printpdf = { version = "0.5.3", features = ["embedded_images"] }
+clap = { version = "4.1.4", features = ["derive"] }
+enum-utils = "0.1.2"
+image = "0.23.14"
