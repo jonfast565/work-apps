@@ -1,0 +1,1 @@
+Get-ChildItem | Select-Object "Name" | where {$_ -like '*Fire*'} | %{ Write-Host "Pruning $($_.Name) ..." && cd $_.Name && git prune && cd ../ }
