@@ -11,8 +11,8 @@ zipArray ls = zip ls [0..]
 processLines :: Int -> Int -> String -> IO String
 processLines firstLine lastLine document =
     let ls = lines document
-        header = [x | (x, i) <- zipArray ls, i == 0]
-        filtered = [x | (x, i) <- zipArray ls, i >= firstLine, i <= lastLine]
+        header = [x | (x, i::Int) <- zipArray ls, i == 0]
+        filtered = [x | (x, i::Int) <- zipArray ls, i >= firstLine, i <= lastLine]
         content = unlines (header ++ filtered) in
     return content
 
