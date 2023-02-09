@@ -2,7 +2,7 @@ module Main where
 
 import Options.Applicative
 
-data Options = Options { string :: String }
+newtype Options = Options { string :: String }
 
 options :: Parser Options
 options = Options
@@ -12,18 +12,18 @@ options = Options
          <> help "The string you want to de-quote" )
 
 dequote :: String -> String
-dequote = map 
+dequote = concatMap (\c -> if c == '"' then ['\\', '"'] else [c])
 
 program :: Options -> IO()
 program opts = do 
-    mapped <- mapM 
-    putStrLn "test"
+    let mapped = dequote $ string opts 
+    putStrLn mapped
 
 main :: IO ()
 main = program =<< execParser opts
   where
     opts = info (options <**> helper)
       ( fullDesc
-     <> progDesc "Print a greeting for TARGET"
-     <> header "hello - a test for optparse-applicative" )
+     <> progDesc "Escapes quotes"
+     <> header "--- escape quotes easily ---" )
   
