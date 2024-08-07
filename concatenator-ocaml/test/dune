@@ -1,0 +1,5 @@
+(test
+ (name test_concatenator)
+ (modules test_concatenator)
+ (libraries alcotest concatenator_lib))
+

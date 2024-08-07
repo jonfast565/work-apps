@@ -1,0 +1,3 @@
+(library
+ (name concatenator_lib)
+ (libraries core logs ppxlib cmdliner))

@@ -1,0 +1,4 @@
+(executable
+ (public_name concat_files)
+ (name main)
+ (libraries concatenator_lib logs))
