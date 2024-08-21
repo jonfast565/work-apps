@@ -2,12 +2,12 @@
 
 module FileManager (walkFiles, walkFilesDefault, defaultConcatenatorFilters, readFileToString, writeNewFile) where
 
-import Control.Monad (filterM)
+import Control.Monad (filterM, forM)
 import Control.Exception (IOException)
 import qualified Control.Exception as E
 
 import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
-import System.FilePath (splitPath, takeExtension, takeFileName)
+import System.FilePath (splitPath, takeExtension, takeFileName, (</>))
 import Logger (getNewLogger)
 
 import System.Log.Logger (logL, Priority (INFO))
@@ -20,11 +20,17 @@ walkFiles fileFilter path = do
     logger <- getNewLogger "file walk"
     logL logger INFO ("Listing directories for path " ++ path)
     temp <- listDirectory path
+    tempBase <- forM temp (return . basePathPlusFile path)
     logL logger INFO ("Listing files for path " ++ path)
-    files <- filterM fileFilter temp
-    directories <- filterM doesDirectoryExist temp
+    files <- filterM fileFilter tempBase
+    logL logger INFO ("Files found " ++ show files)
+    directories <- filterM doesDirectoryExist tempBase
+    logL logger INFO ("Directories found" ++ show directories)
     internalFiles <- mapM (walkFiles fileFilter) directories
     return $ files ++ concat internalFiles
+
+basePathPlusFile :: FilePath -> FilePath -> FilePath
+basePathPlusFile basePath segment = basePath </> segment
 
 walkFilesDefault :: FilePath -> IO [FilePath]
 walkFilesDefault = walkFiles defaultFileFilter
@@ -46,7 +52,7 @@ defaultConcatenatorFilters :: String -> [String] -> FileFilter
 defaultConcatenatorFilters extension excludeFolderParts =
   let filters = [ defaultFileFilter,
                   checkFileExtension extension,
-                  checkPathSegments excludeFolderParts]
+                  checkPathSegments excludeFolderParts ]
   in \path -> and <$> mapM ($ path) filters
 
 readFileToString :: FilePath -> IO [String]
@@ -64,7 +70,7 @@ tryReadFile path = do
     Right content -> return (Right content)
 
 writeNewFile :: CommandLineOptions -> String -> IO ()
-writeNewFile opts content = do 
+writeNewFile opts content = do
   logger <- getNewLogger "writer"
-  logL logger INFO ("Writing files: " ++ (outputFilename opts))
+  logL logger INFO ("Writing files: " ++ outputFilename opts)
   writeFile (outputFolder opts ++ "/" ++ outputFilename opts) content
