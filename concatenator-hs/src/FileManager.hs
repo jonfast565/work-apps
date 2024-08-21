@@ -10,7 +10,7 @@ import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
 import System.FilePath (splitPath, takeExtension, takeFileName, (</>))
 import Logger (getNewLogger)
 
-import System.Log.Logger (logL, Priority (INFO))
+import System.Log.Logger (logL, Priority (INFO, DEBUG))
 import CommandLine (CommandLineOptions, outputFolder, outputFilename)
 
 type FileFilter = FilePath -> IO Bool
@@ -18,14 +18,15 @@ type FileFilter = FilePath -> IO Bool
 walkFiles :: FileFilter -> FilePath -> IO [FilePath]
 walkFiles fileFilter path = do
     logger <- getNewLogger "file walk"
-    logL logger INFO ("Listing directories for path " ++ path)
+    logL logger INFO ("Walking path " ++ path)
+    logL logger DEBUG ("Listing directories for path " ++ path)
     temp <- listDirectory path
     tempBase <- forM temp (return . basePathPlusFile path)
-    logL logger INFO ("Listing files for path " ++ path)
+    logL logger DEBUG ("Listing files for path " ++ path)
     files <- filterM fileFilter tempBase
-    logL logger INFO ("Files found " ++ show files)
+    logL logger DEBUG ("Files found " ++ show files)
     directories <- filterM doesDirectoryExist tempBase
-    logL logger INFO ("Directories found" ++ show directories)
+    logL logger DEBUG ("Directories found" ++ show directories)
     internalFiles <- mapM (walkFiles fileFilter) directories
     return $ files ++ concat internalFiles
 
