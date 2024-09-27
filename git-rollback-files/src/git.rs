@@ -98,7 +98,6 @@ pub fn rollback_file_to_branch(repo_path: &Path, target_branch: &str, relative_f
         Err(_) => return Err(Box::new(git2::Error::from_str("File not found in target branch."))),
     };
 
-    // Step 4: Ensure the entry is a Blob (file)
     if tree_entry.kind() != Some(ObjectType::Blob) {
         return Err(Box::new(git2::Error::from_str("The specified path is not a file.")));
     }
@@ -106,14 +105,12 @@ pub fn rollback_file_to_branch(repo_path: &Path, target_branch: &str, relative_f
     let blob_id = tree_entry.id();
     let blob = repo.find_blob(blob_id)?;
 
-    // Step 5: Write the blob content to the working directory
     let file_content = blob.content();
     let full_path = repo.workdir().unwrap().join(relative_file_path);
 
     fs::write(full_path, file_content)?;
     println!("File '{}' has been rolled back to the version in branch '{}'.", relative_file_path.display(), target_branch);
-
-    // Optional: Stage the file for commit
+    
     let mut index = repo.index()?;
     index.add_path(relative_file_path)?;
     index.write()?;
