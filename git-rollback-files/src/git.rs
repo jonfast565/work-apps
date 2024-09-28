@@ -1,25 +1,28 @@
+use git2::{AnnotatedCommit, Commit, DescribeOptions, FetchOptions, Index, ObjectType, RemoteCallbacks, Repository, Tree, TreeWalkMode, TreeWalkResult};
 use std::error::Error;
 use std::fs;
-use git2::{Repository, AnnotatedCommit, FetchOptions, RemoteCallbacks, Commit, ObjectType};
-use std::path::{Path};
-use crossbeam_channel::Receiver;
-use walkdir::WalkDir;
-use crate::files;
+use std::path::Path;
 
-pub fn open_repository(target_folder: &Path) -> Result<Repository, git2::Error> {
-    let repo = Repository::open(target_folder)?;
+pub(crate) fn open_repository(directory: &Path) -> Result<Repository, Box<dyn Error>> {
+    let repo = Repository::open(directory)?;
     Ok(repo)
 }
 
-pub fn init_repository(directory: &Path) -> Result<Repository, git2::Error> {
-    Repository::init(directory)
+pub(crate) fn init_repository(directory: &Path) -> Result<Repository, Box<dyn Error>> {
+    match Repository::init(directory) {
+        Ok(repo) => Ok(repo),
+        Err(e) => Err(e.into())
+    }
 }
 
-pub fn clone_repository(url: &str, directory: &Path) -> Result<Repository, git2::Error> {
-    Repository::clone(url, directory)
+pub(crate) fn clone_repository(url: &str, directory: &Path) -> Result<Repository, Box<dyn Error>> {
+    match Repository::clone(url, directory) {
+        Ok(repo) => Ok(repo),
+        Err(e) => Err(e.into())
+    }
 }
 
-pub fn checkout_branch(repo: &Repository, branch_name: &str) -> Result<(), git2::Error> {
+pub(crate) fn checkout_branch(repo: &Repository, branch_name: &str) -> Result<(), Box<dyn Error>> {
     let (object, reference) = repo.revparse_ext(branch_name)?;
 
     // checkout the tree
@@ -35,11 +38,11 @@ pub fn checkout_branch(repo: &Repository, branch_name: &str) -> Result<(), git2:
     Ok(())
 }
 
-pub fn fetch_repository_from_origin(repo: &Repository) -> Result<(), git2::Error> {
+pub(crate) fn fetch_repository_from_origin(repo: &Repository) -> Result<(), Box<dyn Error>> {
     fetch_repository_from_remote(repo, "origin")
 }
 
-pub fn fetch_repository_from_remote(repo: &Repository, remote_name: &str) -> Result<(), git2::Error> {
+pub(crate) fn fetch_repository_from_remote(repo: &Repository, remote_name: &str) -> Result<(), Box<dyn Error>> {
     let mut remote = repo.find_remote(remote_name)?;
 
     // set up fetch options
@@ -53,7 +56,7 @@ pub fn fetch_repository_from_remote(repo: &Repository, remote_name: &str) -> Res
     Ok(())
 }
 
-pub fn pull_branch(repo: &Repository) -> Result<(), git2::Error> {
+pub(crate) fn pull_branch(repo: &Repository) -> Result<(), Box<dyn Error>> {
     // Fetch new commits from origin
     fetch_repository_from_origin(repo)?;
 
@@ -67,12 +70,12 @@ pub fn pull_branch(repo: &Repository) -> Result<(), git2::Error> {
     Ok(())
 }
 
-pub fn merge_branch(repo: &Repository, commit: &AnnotatedCommit) -> Result<(), git2::Error> {
+pub(crate) fn merge_branch(repo: &Repository, commit: &AnnotatedCommit) -> Result<(), Box<dyn Error>> {
     let mut index = repo.merge_commits(&repo.head()?.peel_to_commit()?, &repo.find_commit(commit.id())?, None)?;
 
     if index.has_conflicts() {
         println!("Conflicts detected during merge. Please resolve manually.");
-        return Err(git2::Error::from_str("Merge conflicts occurred."));
+        return Err(Box::from("Merge conflicts occurred."));
     }
 
     // Write tree
@@ -87,19 +90,24 @@ pub fn merge_branch(repo: &Repository, commit: &AnnotatedCommit) -> Result<(), g
     Ok(())
 }
 
-pub fn rollback_file_to_branch(repo_path: &Path, target_branch: &str, relative_file_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let repo = open_repository(repo_path)?;
+pub(crate) fn describe_repository(repo: &Repository) -> Result<(), Box<dyn Error>> {
+    let describe_options = DescribeOptions::new();
+    let describe = repo.describe(&describe_options)?;
+    let describe_string = describe.format(None)?;
+    println!("Repo Describe: {}", describe_string);
+    Ok(())
+}
 
-    let branch = repo.find_branch(target_branch, git2::BranchType::Local)?;
-    let target_commit = branch.get().peel_to_commit()?;
-    let target_tree = target_commit.tree()?;
-    let tree_entry = match target_tree.get_path(relative_file_path) {
+pub(crate) fn rollback_file_to_branch(relative_file_path: &Path, repo: &Repository, tree: &Tree, index: &mut Index) -> Result<(), Box<dyn Error>> {
+    let tree_entry = match tree.get_path(relative_file_path) {
         Ok(entry) => entry,
-        Err(_) => return Err(Box::new(git2::Error::from_str("File not found in target branch."))),
+        Err(e) => {
+            return Err(Box::new(e))
+        }
     };
 
     if tree_entry.kind() != Some(ObjectType::Blob) {
-        return Err(Box::new(git2::Error::from_str("The specified path is not a file.")));
+        return Err(Box::from("The specified path is not a file."));
     }
 
     let blob_id = tree_entry.id();
@@ -109,38 +117,23 @@ pub fn rollback_file_to_branch(repo_path: &Path, target_branch: &str, relative_f
     let full_path = repo.workdir().unwrap().join(relative_file_path);
 
     fs::write(full_path, file_content)?;
-    println!("File '{}' has been rolled back to the version in branch '{}'.", relative_file_path.display(), target_branch);
-    
-    let mut index = repo.index()?;
+    println!("File '{}' has been rolled back.", relative_file_path.display());
+
     index.add_path(relative_file_path)?;
     index.write()?;
 
     Ok(())
 }
 
-pub fn rollback_files_to_branch(repo_path: &str, branch_name: &str, target_folder: &str, cancellation_channel: Receiver<()>) -> Result<(), Box<dyn Error>> {
-    let repo_path_canonical = Path::new(repo_path).canonicalize()?;
-    let target_folder_canonical = Path::new(target_folder).canonicalize()?;
-
-    let paths = WalkDir::new(&repo_path_canonical);
-    for walk_path in paths {
-        let path_dir_entry = walk_path?;
-        let path = path_dir_entry.path();
-        if path.is_file() && !files::is_in_target_folder(&path, &target_folder_canonical)
-            && !files::is_hidden_folder(&path)
-            && !files::is_special_folder(&path) {
-            let relative_path = path.strip_prefix(&repo_path_canonical)?;
-            match rollback_file_to_branch(&repo_path_canonical, branch_name, &relative_path) {
-                Ok(..) => (),
-                Err(e) => println!("Error rolling back file to branch '{}': {}", relative_path.display(), e),
-            }
-            if cancellation_channel.try_recv().is_ok() {
-                println!("Task cancelled!");
-                break;
-            }
+pub(crate) fn read_tree_files(tree: &Tree) -> Result<Vec<String>, Box<dyn Error>> {
+    let mut files = Vec::new();
+    tree.walk(TreeWalkMode::PreOrder, |_, entry| {
+        if let Some(name) = entry.name() {
+            files.push(name.to_string());
         }
-    }
-    Ok(())
+        TreeWalkResult::Ok
+    })?;
+    Ok(files)
 }
 
 fn get_commit_string(commit: &Commit) -> String {
@@ -161,3 +154,4 @@ fn remove_lockfile(repo_path: &Path) -> Result<(), std::io::Error> {
     }
     Ok(())
 }
+
