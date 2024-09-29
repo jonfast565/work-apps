@@ -1,31 +1,48 @@
 use std::error::Error;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use crossbeam_channel::Receiver;
-use git2::{BranchType};
+use git2::{BranchType, ObjectType, Repository, Tree};
 use crate::compare::three_way_compare;
 use crate::git;
 use crate::git::{describe_repository, open_repository};
 use crate::models::CompareAction;
 
 pub(crate) struct RepoSuperBlock {
-    repo_path: String,
-    branch: String,
+    repo_path: PathBuf,
+    branch_name: String,
+    repository: Repository
 }
 
 impl RepoSuperBlock {
-    fn new(repo_path: &Path, branch: &String) -> Result<RepoSuperBlock, Box<dyn Error>> {
+    fn new(repo_path: &Path, branch_name: &str) -> Result<Self, Box<dyn Error>> {
         let repo_path_canonical = repo_path.canonicalize()?;
-        Ok(RepoSuperBlock {
-            repo_path: repo_path_canonical.to_str().unwrap().to_string(),
-            branch: branch.clone(),
+        let repo: Repository = open_repository(Path::new(&repo_path_canonical))?;
+        Ok(Self {
+            repo_path: repo_path.to_path_buf(),
+            branch_name: branch_name.to_string(),
+            repository: repo,
         })
     }
     fn read_tree_files(&self) -> Result<Vec<String>, Box<dyn Error>> {
-        let repo = open_repository(Path::new(&self.repo_path))?;
-        let branch_object = repo.find_branch(self.branch.as_str(), BranchType::Local)?;
+        let branch_tree = self.get_branch_tree()?;
+        git::read_tree_file_paths(&branch_tree)
+    }
+    fn read_file(&self, path: &Path) -> Result<Vec<u8>, Box<dyn Error>> {
+        let branch_tree = self.get_branch_tree()?;
+        let tree_entry = branch_tree.get_path(path)?;
+        if tree_entry.kind() == Some(ObjectType::Blob) {
+            let blob = self.repository.find_blob(tree_entry.id())?;
+            Ok(blob.content().to_vec())
+        } else {
+            Err(Box::from("The specified path is not a file"))
+        }
+    }
+
+    fn get_branch_tree(&self) -> Result<Tree, Box<dyn Error>> {
+        let branch_object = self.repository.find_branch(self.branch_name.as_str(), BranchType::Local)?;
         let branch_commit = branch_object.get().peel_to_commit()?;
         let branch_tree = branch_commit.tree()?;
-        git::read_tree_files(&branch_tree)
+        Ok(branch_tree)
     }
 }
 

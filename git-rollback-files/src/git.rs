@@ -125,7 +125,7 @@ pub(crate) fn rollback_file_to_branch(relative_file_path: &Path, repo: &Reposito
     Ok(())
 }
 
-pub(crate) fn read_tree_files(tree: &Tree) -> Result<Vec<String>, Box<dyn Error>> {
+pub(crate) fn read_tree_file_paths(tree: &Tree) -> Result<Vec<String>, Box<dyn Error>> {
     let mut files = Vec::new();
     tree.walk(TreeWalkMode::PreOrder, |_, entry| {
         if let Some(name) = entry.name() {
