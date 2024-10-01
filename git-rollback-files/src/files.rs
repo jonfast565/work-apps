@@ -43,3 +43,7 @@ pub(crate) fn normalize_path_with_forward_slashes<P: AsRef<Path>>(path: P) -> Pa
     // Return a PathBuf created from the normalized string
     PathBuf::from(normalized_path_str)
 }
+
+pub(crate) fn path_contains(parent: &PathBuf, child: &PathBuf) -> bool {
+    child.ancestors().any(|ancestor| ancestor == parent)
+}

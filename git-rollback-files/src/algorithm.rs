@@ -3,9 +3,10 @@ use std::path::{Path, PathBuf};
 use crossbeam_channel::Receiver;
 use git2::{BranchType, ObjectType, Repository, Tree};
 use crate::compare::three_way_compare;
+use crate::files::path_contains;
 use crate::git;
-use crate::git::{describe_repository, open_repository};
-use crate::models::CompareAction;
+use crate::git::{describe_repository, open_repository, checkout_branch};
+use crate::models::{CompareAction, CompareMode};
 
 pub(crate) struct RepoSuperBlock {
     repo_path: PathBuf,
@@ -46,10 +47,11 @@ impl RepoSuperBlock {
     }
 }
 
-pub(crate) fn compare_and_merge_changes(repo_path: &Path, source_branch: &str, target_branch: &str, excluded_paths: Vec<String>, cancellation_channel: Receiver<()>) -> Result<(), Box<dyn Error>> {
+pub(crate) fn compare_and_merge_changes(repo_path: &Path, source_branch: &str, target_branch: &str, excluded_paths: Vec<PathBuf>, _mode: CompareMode, cancellation_channel: Receiver<()>) -> Result<(), Box<dyn Error>> {
     let repo_path_canonical = Path::new(repo_path).canonicalize()?;
     let repo = open_repository(&repo_path_canonical)?;
     describe_repository(&repo)?;
+    // checkout_branch(&repo, source_branch)?;
 
     let source_repo_super_block = RepoSuperBlock::new(repo_path, &source_branch.to_string())?;
     let target_repo_super_block = RepoSuperBlock::new(repo_path, &target_branch.to_string())?;
@@ -57,17 +59,8 @@ pub(crate) fn compare_and_merge_changes(repo_path: &Path, source_branch: &str, t
     let source_files = source_repo_super_block.read_tree_files()?;
     let target_files = target_repo_super_block.read_tree_files()?;
 
-    let source_files_excluded: Vec<_> = source_files
-        .iter()
-        .filter(|x| !excluded_paths.contains(x))
-        .cloned()
-        .collect();
-
-    let target_files_excluded: Vec<_> = target_files
-        .iter()
-        .filter(|x| !excluded_paths.contains(x))
-        .cloned()
-        .collect();
+    let source_files_excluded = exclude_paths(source_files, &excluded_paths);
+    let target_files_excluded = exclude_paths(target_files, &excluded_paths);
 
     let compared = three_way_compare(source_files_excluded.as_slice(), target_files_excluded.as_slice());
     let inserts: Vec<_> = compared
@@ -116,4 +109,17 @@ pub(crate) fn compare_and_merge_changes(repo_path: &Path, source_branch: &str, t
 
     index.write()?;
     Ok(())
+}
+
+fn exclude_paths(paths: Vec<String>, excluded_paths: &Vec<PathBuf>) -> Vec<String> {
+    let mut result: Vec<String> = Vec::new();
+    for path_string in paths {
+        let path = Path::new(&path_string).to_path_buf();
+        for excluded_path in excluded_paths {
+            if !path_contains(excluded_path, &path) {
+                result.push(path.to_string_lossy().parse().unwrap());
+            }
+        }
+    }
+    result
 }

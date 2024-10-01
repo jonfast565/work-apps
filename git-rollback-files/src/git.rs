@@ -24,11 +24,7 @@ pub(crate) fn clone_repository(url: &str, directory: &Path) -> Result<Repository
 
 pub(crate) fn checkout_branch(repo: &Repository, branch_name: &str) -> Result<(), Box<dyn Error>> {
     let (object, reference) = repo.revparse_ext(branch_name)?;
-
-    // checkout the tree
     repo.checkout_tree(&object, None)?;
-
-    // set the pointer to the head
     if let Some(reference) = reference {
         repo.set_head(reference.name().unwrap())?;
     } else {
@@ -127,10 +123,10 @@ pub(crate) fn rollback_file_to_branch(relative_file_path: &Path, repo: &Reposito
 
 pub(crate) fn read_tree_file_paths(tree: &Tree) -> Result<Vec<String>, Box<dyn Error>> {
     let mut files = Vec::new();
-    tree.walk(TreeWalkMode::PreOrder, |_, entry| {
-        if let Some(name) = entry.name() {
-            files.push(name.to_string());
-        }
+    tree.walk(TreeWalkMode::PreOrder, |s, entry| {
+        let entry = entry.name().expect("should have an entry").to_string();
+        let path = Path::new(s).join(Path::new(entry.as_str()));
+        files.push(path.to_str().unwrap().to_string());
         TreeWalkResult::Ok
     })?;
     Ok(files)

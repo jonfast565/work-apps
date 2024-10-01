@@ -1,4 +1,5 @@
 use clap::Parser;
+use crate::models::CompareMode;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -11,4 +12,6 @@ pub struct CliArgs {
     pub target_branch: String,
     #[arg(short, long)]
     pub excluded_folder: Vec<String>,
+    #[arg(short, long)]
+    pub compare_mode: CompareMode
 }
